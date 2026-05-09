@@ -276,3 +276,16 @@ class ActionResult:
     executed_at: datetime = field(default_factory=datetime.now)
     error: Optional[str] = None
     is_stub: bool = False
+
+
+@dataclass
+class ControlState:
+    """Control state from HA input helpers — read by DayPlanner every cycle."""
+    brain_enabled: bool = True
+    brain_mode: str = "auto"
+    vacation_active: bool = False
+    vacation_start: Optional[datetime] = None
+    vacation_end: Optional[datetime] = None
+    dhw_boost_now: bool = False
+    dhw_target_temp: float = 55.0
+    timestamp: datetime = field(default_factory=datetime.now)

@@ -154,6 +154,7 @@ class ThermalModelParams:
 @dataclass
 class PredictionRecord:
     """Single prediction logged by OutcomeTracker for feedback loop."""
+    prediction_id: str
     model_name: str
     features: dict
     predicted_value: float

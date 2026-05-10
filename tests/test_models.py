@@ -145,6 +145,7 @@ class TestActionResult:
 class TestPredictionRecord:
     def test_defaults(self):
         rec = PredictionRecord(
+            prediction_id="test-uuid",
             model_name="dhw_demand",
             features={"outdoor_temp_c": 5.0},
             predicted_value=0.75,

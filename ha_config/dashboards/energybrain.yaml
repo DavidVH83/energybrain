@@ -1,0 +1,190 @@
+title: EnergyBrain
+icon: mdi:brain
+path: energybrain
+
+cards:
+
+  # ─── STATUS BANNER ───────────────────────────────────────────────────────
+  - type: markdown
+    content: >
+      ## 🧠 EnergyBrain
+
+      **Status:** {{ states('input_text.energybrain_status') }}
+
+      **Laatste actie:** {{ states('input_text.energybrain_last_action') }}
+
+      **Vandaag:** {{ states('input_text.energybrain_today_plan') }}
+
+      **Volgende:** {{ states('input_text.energybrain_next_action') }}
+
+  # ─── LIVE ENERGIE ────────────────────────────────────────────────────────
+  - type: glance
+    title: ⚡ Live energie
+    show_name: true
+    show_icon: true
+    show_state: true
+    entities:
+      - entity: sensor.goodwe_pv_power
+        name: Zonnepanelen
+        icon: mdi:solar-power
+      - entity: sensor.homewizard_p1_power
+        name: Net
+        icon: mdi:transmission-tower
+      - entity: sensor.marstek_venuse_state_of_charge
+        name: Batterij
+        icon: mdi:battery
+      - entity: sensor.opentherm_sww_temperatuur
+        name: Boiler
+        icon: mdi:water-boiler
+      - entity: sensor.anna_outdoor_temperature
+        name: Buiten
+        icon: mdi:thermometer
+
+  # ─── SYSTEEM AAN/UIT ─────────────────────────────────────────────────────
+  - type: entities
+    title: ⚙️ Systeem
+    entities:
+      - entity: input_boolean.energybrain_enabled
+        name: EnergyBrain actief
+      - entity: input_select.energybrain_mode
+        name: Modus
+
+  # ─── WARM WATER ──────────────────────────────────────────────────────────
+  - type: entities
+    title: 🚿 Warm water
+    entities:
+      - entity: sensor.opentherm_sww_temperatuur
+        name: Huidige boilertemperatuur
+      - entity: input_number.energybrain_dhw_target_temp
+        name: Doeltemperatuur (°C)
+      - entity: input_boolean.energybrain_dhw_boost_now
+        name: Nu boosten
+
+  # ─── TEMPERATUUR OVERRIDE ────────────────────────────────────────────────
+  - type: vertical-stack
+    cards:
+      - type: entities
+        title: 🌡️ Temperatuur override
+        entities:
+          - entity: input_boolean.energybrain_hvac_override_active
+            name: Override actief
+          - entity: input_number.energybrain_hvac_override_setpoint
+            name: Gewenste temperatuur (°C)
+          - entity: input_number.energybrain_hvac_override_duration_h
+            name: Duur (uur)
+          - entity: input_datetime.energybrain_hvac_override_expires
+            name: Actief tot
+
+      - type: conditional
+        conditions:
+          - entity: input_boolean.energybrain_hvac_override_active
+            state: "on"
+        card:
+          type: markdown
+          content: >
+            ✅ **Override actief:
+            {{ states('input_number.energybrain_hvac_override_setpoint') }}°C
+            tot {{ states('input_datetime.energybrain_hvac_override_expires') | as_timestamp | timestamp_custom('%H:%M') }}**
+
+            EnergyBrain past de temperatuur niet aan tot de override verloopt.
+
+  # ─── FEEST / GASTEN MODUS ────────────────────────────────────────────────
+  - type: vertical-stack
+    cards:
+      - type: entities
+        title: 🎉 Feest / Gasten
+        entities:
+          - entity: input_boolean.energybrain_party_mode
+            name: Feest modus
+          - entity: input_number.energybrain_party_temp_offset
+            name: Temperatuur extra (°C)
+          - entity: input_number.energybrain_party_duration_h
+            name: Duur (uur)
+          - entity: input_boolean.energybrain_party_extra_cooking
+            name: Meer koken verwacht
+          - entity: input_number.energybrain_party_dishwasher_runs
+            name: Vaatwasser beurten
+          - entity: input_datetime.energybrain_party_expires
+            name: Actief tot
+
+      - type: conditional
+        conditions:
+          - entity: input_boolean.energybrain_party_mode
+            state: "on"
+        card:
+          type: markdown
+          content: >
+            🎉 **Feest modus actief tot
+            {{ states('input_datetime.energybrain_party_expires') | as_timestamp | timestamp_custom('%H:%M') }}**
+
+            Temperatuur +{{ states('input_number.energybrain_party_temp_offset') }}°C |
+            Vaatwasser {{ states('input_number.energybrain_party_dishwasher_runs') | int }}×
+
+  # ─── VAKANTIE MODUS ──────────────────────────────────────────────────────
+  - type: entities
+    title: 🏖️ Vakantie
+    entities:
+      - entity: input_boolean.energybrain_vacation_mode
+        name: Vakantie modus
+      - entity: input_datetime.energybrain_vacation_start
+        name: Vertrekdatum
+      - entity: input_datetime.energybrain_vacation_end
+        name: Terugkeerdatum
+
+  # ─── TOESTELLEN ──────────────────────────────────────────────────────────
+  - type: entities
+    title: 🏠 Toestellen
+    entities:
+      - entity: sensor.siemens_dishwasher_operation_state
+        name: Vaatwasser
+        icon: mdi:dishwasher
+      - entity: binary_sensor.siemens_dishwasher_remote_start_allowance_state
+        name: Vaatwasser klaar voor start
+      - entity: sensor.siemens_washing_machine_operation_state
+        name: Wasmachine
+        icon: mdi:washing-machine
+      - entity: binary_sensor.siemens_washing_machine_remote_start_allowance_state
+        name: Wasmachine klaar voor start
+      - entity: sensor.siemens_dryer_operation_state
+        name: Droger
+        icon: mdi:tumble-dryer
+      - entity: binary_sensor.siemens_dryer_remote_start_allowance_state
+        name: Droger klaar voor start
+
+  # ─── ENERGIE DETAILS ─────────────────────────────────────────────────────
+  - type: entities
+    title: 📊 Energie details
+    entities:
+      - entity: sensor.goodwe_today_generation
+        name: PV vandaag (kWh)
+        icon: mdi:solar-panel
+      - entity: sensor.homewizard_p1_total_power_import_kwh
+        name: Import vandaag (kWh)
+        icon: mdi:home-import-outline
+      - entity: sensor.homewizard_p1_total_power_export_kwh
+        name: Export vandaag (kWh)
+        icon: mdi:home-export-outline
+      - entity: sensor.marstek_venuse_battery_power
+        name: Batterij vermogen (W)
+        icon: mdi:battery-charging
+
+  # ─── WARMTEPOMP ──────────────────────────────────────────────────────────
+  - type: thermostat
+    entity: climate.anna
+    name: Anna warmtepomp
+
+  # ─── SYSTEEM INFO ────────────────────────────────────────────────────────
+  - type: entities
+    title: 🔧 Systeem info
+    entities:
+      - entity: sensor.goodwe_operating_mode
+        name: GoodWe modus
+        icon: mdi:solar-power-variant
+      - entity: sensor.marstek_venuse_working_mode
+        name: Marstek modus
+        icon: mdi:battery-sync
+      - entity: sensor.marstek_venuse_battery_temperature
+        name: Batterij temperatuur
+        icon: mdi:thermometer
+      - entity: input_text.energybrain_override_reason
+        name: Override reden

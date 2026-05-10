@@ -1,0 +1,203 @@
+# EnergyBrain — Input Helpers Package
+# Bestand: ha_config/packages/energybrain_control.yaml
+#
+# Installatie:
+#   Kopieer naar HA config map (bijv. /config/packages/)
+#   Voeg toe aan configuration.yaml:
+#     homeassistant:
+#       packages: !include_dir_named packages/
+#
+# Bevat alle input helpers die EnergyBrain leest en schrijft.
+# Temperatuurvoorkeur wordt NIET hier ingesteld — brein leert van Anna-aanpassingen.
+
+# ===========================================================================
+# SYSTEEM AAN/UIT + MODUS
+# ===========================================================================
+
+input_boolean:
+  energybrain_enabled:
+    name: "EnergyBrain actief"
+    icon: mdi:brain
+    initial: true
+
+  energybrain_vacation_mode:
+    name: "Vakantie modus"
+    icon: mdi:beach
+    initial: false
+
+  energybrain_dhw_boost_now:
+    name: "Warm water nu boosten"
+    icon: mdi:water-boiler
+    initial: false
+
+  # HVAC override — brein past temperatuur niet aan zolang dit actief is
+  energybrain_hvac_override_active:
+    name: "Temperatuur override actief"
+    icon: mdi:thermometer-alert
+    initial: false
+
+  # Feest / gasten modus — hogere temperatuur + extra toestellen
+  energybrain_party_mode:
+    name: "Feest modus"
+    icon: mdi:party-popper
+    initial: false
+
+  energybrain_party_extra_cooking:
+    name: "Meer koken verwacht"
+    icon: mdi:chef-hat
+    initial: false
+
+
+input_number:
+  energybrain_dhw_target_temp:
+    name: "Boiler doeltemperatuur"
+    icon: mdi:thermometer-water
+    min: 50
+    max: 60
+    step: 1
+    unit_of_measurement: "°C"
+    mode: slider
+    initial: 55
+
+  # HVAC override
+  energybrain_hvac_override_setpoint:
+    name: "Override temperatuur"
+    icon: mdi:thermometer
+    min: 16
+    max: 23
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: box
+    initial: 20.5
+
+  energybrain_hvac_override_duration_h:
+    name: "Override duur"
+    icon: mdi:timer
+    min: 1
+    max: 12
+    step: 1
+    unit_of_measurement: "uur"
+    mode: slider
+    initial: 4
+
+  # Feest modus
+  energybrain_party_temp_offset:
+    name: "Temperatuur extra"
+    icon: mdi:thermometer-plus
+    min: 0
+    max: 3
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: slider
+    initial: 1.0
+
+  energybrain_party_duration_h:
+    name: "Feest duur"
+    icon: mdi:timer
+    min: 2
+    max: 24
+    step: 1
+    unit_of_measurement: "uur"
+    mode: slider
+    initial: 4
+
+  energybrain_party_dishwasher_runs:
+    name: "Vaatwasser beurten verwacht"
+    icon: mdi:dishwasher
+    min: 1
+    max: 3
+    step: 1
+    unit_of_measurement: "×"
+    mode: box
+    initial: 1
+
+
+input_select:
+  energybrain_mode:
+    name: "EnergyBrain modus"
+    icon: mdi:tune
+    options:
+      - normaal
+      - eco
+      - boost
+    initial: normaal
+
+
+input_datetime:
+  energybrain_vacation_start:
+    name: "Vertrekdatum"
+    icon: mdi:calendar-arrow-right
+    has_date: true
+    has_time: false
+
+  energybrain_vacation_end:
+    name: "Terugkeerdatum"
+    icon: mdi:calendar-arrow-left
+    has_date: true
+    has_time: false
+
+  energybrain_hvac_override_expires:
+    name: "Override actief tot"
+    icon: mdi:calendar-clock
+    has_date: true
+    has_time: true
+
+  energybrain_party_expires:
+    name: "Feest modus actief tot"
+    icon: mdi:calendar-clock
+    has_date: true
+    has_time: true
+
+
+input_text:
+  energybrain_status:
+    name: "EnergyBrain status"
+    icon: mdi:information
+    max: 255
+    initial: "Nog niet gestart"
+
+  energybrain_last_action:
+    name: "Laatste actie"
+    icon: mdi:history
+    max: 255
+    initial: ""
+
+  energybrain_today_plan:
+    name: "Plan vandaag"
+    icon: mdi:calendar-today
+    max: 255
+    initial: ""
+
+  energybrain_next_action:
+    name: "Volgende actie"
+    icon: mdi:clock-outline
+    max: 255
+    initial: ""
+
+  energybrain_override_reason:
+    name: "Override reden"
+    icon: mdi:comment-text
+    max: 255
+    initial: ""
+
+
+# ===========================================================================
+# TIMERS — beheren override/boost verloop zonder Python code
+# ===========================================================================
+
+timer:
+  energybrain_dhw_boost_reset:
+    name: "DHW boost reset timer"
+    icon: mdi:timer
+    duration: "00:05:00"
+    restore: true
+
+  energybrain_hvac_override_timer:
+    name: "HVAC override timer"
+    icon: mdi:timer
+    restore: true
+
+  energybrain_party_timer:
+    name: "Feest modus timer"
+    icon: mdi:timer
+    restore: true

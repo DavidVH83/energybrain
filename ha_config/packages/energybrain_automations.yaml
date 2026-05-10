@@ -1,0 +1,140 @@
+# EnergyBrain — Automaties Package
+# Bestand: ha_config/packages/energybrain_automations.yaml
+#
+# Timer automaties — beheren override/boost verloop zonder Python code.
+# EnergyBrain leest de input helpers; de automaties zorgen dat timers
+# automatisch aflopen zodat het brein niet "vastzit" in een override.
+
+automation:
+
+  # ─── HVAC OVERRIDE ──────────────────────────────────────────────────────
+
+  - alias: "EnergyBrain | HVAC Override starten"
+    description: "Start timer en sla verloopdatumtijd op zodra override wordt ingeschakeld"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: input_boolean.energybrain_hvac_override_active
+        to: "on"
+    action:
+      - service: timer.start
+        target:
+          entity_id: timer.energybrain_hvac_override_timer
+        data:
+          duration: >
+            {{ (states('input_number.energybrain_hvac_override_duration_h') | float * 3600) | int }}
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.energybrain_hvac_override_expires
+        data:
+          datetime: >
+            {{ (now() + timedelta(hours=states('input_number.energybrain_hvac_override_duration_h') | float)).strftime('%Y-%m-%d %H:%M:%S') }}
+
+  - alias: "EnergyBrain | HVAC Override verlopen"
+    description: "Zet override uit wanneer timer afloopt"
+    mode: single
+    trigger:
+      - platform: event
+        event_type: timer.finished
+        event_data:
+          entity_id: timer.energybrain_hvac_override_timer
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.energybrain_hvac_override_active
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.energybrain_override_reason
+        data:
+          value: ""
+
+  # ─── FEEST MODUS ────────────────────────────────────────────────────────
+
+  - alias: "EnergyBrain | Feest modus starten"
+    description: "Start timer zodra feest modus wordt ingeschakeld"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: input_boolean.energybrain_party_mode
+        to: "on"
+    action:
+      - service: timer.start
+        target:
+          entity_id: timer.energybrain_party_timer
+        data:
+          duration: >
+            {{ (states('input_number.energybrain_party_duration_h') | float * 3600) | int }}
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.energybrain_party_expires
+        data:
+          datetime: >
+            {{ (now() + timedelta(hours=states('input_number.energybrain_party_duration_h') | float)).strftime('%Y-%m-%d %H:%M:%S') }}
+
+  - alias: "EnergyBrain | Feest modus verlopen"
+    description: "Zet feest modus uit wanneer timer afloopt"
+    mode: single
+    trigger:
+      - platform: event
+        event_type: timer.finished
+        event_data:
+          entity_id: timer.energybrain_party_timer
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.energybrain_party_mode
+
+  # ─── DHW BOOST ──────────────────────────────────────────────────────────
+
+  - alias: "EnergyBrain | DHW boost reset"
+    description: >
+      Reset de DHW boost-knop automatisch na 5 minuten.
+      EnergyBrain heeft de aanvraag opgepikt en de knop hoeft niet langer aan te staan.
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: input_boolean.energybrain_dhw_boost_now
+        to: "on"
+        for: "00:05:00"
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.energybrain_dhw_boost_now
+
+  # ─── VAKANTIE MODUS AUTOSTART ───────────────────────────────────────────
+
+  - alias: "EnergyBrain | Vakantie modus activeren op vertrekdag"
+    description: "Schakel vakantie modus automatisch in op de ingestelde vertrekdatum"
+    mode: single
+    trigger:
+      - platform: time
+        at: "06:00:00"
+    condition:
+      - condition: template
+        value_template: >
+          {{ states('input_datetime.energybrain_vacation_start') != 'unknown'
+             and states('input_datetime.energybrain_vacation_start') != 'unavailable'
+             and states('input_datetime.energybrain_vacation_start')[:10] == now().strftime('%Y-%m-%d')
+             and not is_state('input_boolean.energybrain_vacation_mode', 'on') }}
+    action:
+      - service: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.energybrain_vacation_mode
+
+  - alias: "EnergyBrain | Vakantie modus deactiveren op terugkeerdag"
+    description: "Schakel vakantie modus automatisch uit op de ingestelde terugkeerdatum"
+    mode: single
+    trigger:
+      - platform: time
+        at: "06:00:00"
+    condition:
+      - condition: template
+        value_template: >
+          {{ states('input_datetime.energybrain_vacation_end') != 'unknown'
+             and states('input_datetime.energybrain_vacation_end') != 'unavailable'
+             and states('input_datetime.energybrain_vacation_end')[:10] == now().strftime('%Y-%m-%d')
+             and is_state('input_boolean.energybrain_vacation_mode', 'on') }}
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.energybrain_vacation_mode

@@ -1,6 +1,6 @@
 FROM python:3.11-slim-bookworm
 
-# Install build dependencies (Debian-based)
+# Build deps for scikit-learn / scipy C extensions + jq for options.json
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
@@ -9,29 +9,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libopenblas-dev \
     gfortran \
+    git \
+    jq \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
-# Copy the full source tree (build context = repo root)
-COPY pyproject.toml ./
-COPY energybrain/ ./energybrain/
-
-# Install the package and its runtime dependencies
+# Install EnergyBrain and all its dependencies from GitHub
 RUN pip install --no-cache-dir \
-    "aiohttp>=3.9" \
-    "python-dotenv>=1.0" \
-    "pymodbus>=3.6" \
-    "aiosqlite>=0.20" \
-    "scikit-learn>=1.4" \
-    "scipy>=1.12" \
-    "numpy>=1.26" \
-    "pandas>=2.2" \
-    "joblib>=1.3" \
-    "structlog>=24.0" \
-    && pip install --no-cache-dir -e .
+    "git+https://github.com/DavidVH83/energybrain.git#egg=energybrain"
 
-COPY ha-addon/run.sh /run.sh
+COPY run.sh /run.sh
 RUN chmod +x /run.sh
 
 CMD ["/run.sh"]

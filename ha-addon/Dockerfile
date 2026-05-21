@@ -13,11 +13,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Install EnergyBrain — pinned to commit so Docker cache busts on every update
-# Update this hash after each push: git rev-parse HEAD
-ARG ENERGYBRAIN_COMMIT=3813510e0d02c67d94b571eb1ba553d3ace7f7f1
+# Install EnergyBrain — commit hash in RUN-regel zodat Docker cache altijd bust
+# 3813510 = fix: due_actions, validate_action, Watchdog constructor
 RUN pip install --no-cache-dir \
-    "git+https://github.com/DavidVH83/energybrain.git@${ENERGYBRAIN_COMMIT}#egg=energybrain"
+    "git+https://github.com/DavidVH83/energybrain.git@38135101223418fb04f86a402611df5741d5cc39#egg=energybrain"
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh

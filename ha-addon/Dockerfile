@@ -1,6 +1,6 @@
 FROM python:3.11-slim-bookworm
 
-# Install build dependencies (Debian-based, niet Alpine)
+# Install build dependencies (Debian-based)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
@@ -13,9 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Copy the full source tree (build context = repo root)
 COPY pyproject.toml ./
 COPY energybrain/ ./energybrain/
 
+# Install the package and its runtime dependencies
 RUN pip install --no-cache-dir \
     "aiohttp>=3.9" \
     "python-dotenv>=1.0" \

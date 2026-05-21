@@ -4,7 +4,7 @@ slug: energybrain
 description: >
   Intelligent learning home energy management — coordinates PV, battery,
   heat pump and appliances to minimise grid import and capacity tariff.
-url: https://github.com/davidvanham/energybrain-addon
+url: https://github.com/DavidVH83/energybrain
 arch:
   - aarch64
   - amd64

@@ -31,6 +31,9 @@ ml-advanced = [
     "lightgbm>=4.3",
 ]
 
+[tool.setuptools.packages.find]
+include = ["energybrain*"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

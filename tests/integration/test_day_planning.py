@@ -137,8 +137,17 @@ class TestSunnyDayAppliancesStartInSurplus:
         assert plan is not None
         if plan.surplus_windows:
             best = max(plan.surplus_windows, key=lambda w: w.avg_surplus_w)
+            # Tasks are either within the surplus window or at their hard deadline
+            # (DayPlanner schedules at hard_deadline when surplus window has passed)
             for task in plan.scheduled_tasks:
-                assert best.start_hour <= task.planned_start.hour <= best.end_hour + 2
+                in_surplus = best.start_hour <= task.planned_start.hour <= best.end_hour + 2
+                at_deadline = task.hard_deadline is not None and \
+                    task.planned_start.hour == task.hard_deadline.hour
+                assert in_surplus or at_deadline, (
+                    f"Task {task.name} at {task.planned_start.hour}:00 is neither in surplus "
+                    f"window ({best.start_hour}-{best.end_hour}) nor at deadline "
+                    f"({task.hard_deadline})"
+                )
 
     def test_morning_notification_sent(self):
         state = _make_state(_PV_SUNNY)

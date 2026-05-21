@@ -109,7 +109,7 @@ class Orchestrator:
         self._week_strategist = WeekStrategist()
         self._rollback = RollbackManager()
         self._hard_limits = HardLimits(config)
-        self._watchdog = Watchdog(self._ha, self._notifier, config)
+        self._watchdog = Watchdog(config, db)
 
         # Runtime state
         self._current_state: Optional[SystemState] = None
@@ -473,7 +473,7 @@ class Orchestrator:
             parameters={"appliance": task.appliance_type},
             reason=f"surplus_window, surplus={state.grid.surplus_w:.0f}W",
         )
-        ok, reason = validate_action(action, state)
+        ok, reason = self._hard_limits.validate_action(action, state)
         if not ok:
             self._log.info("action_blocked_by_hard_limit", action=task.name, reason=reason)
             return

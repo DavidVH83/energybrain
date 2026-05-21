@@ -133,6 +133,32 @@ class RollbackManager:
         self._pending = [e for e in self._pending if not e.executed]
         return results
 
+    def due_actions(self, now: datetime) -> list["Action"]:
+        """Return overdue rollback actions and mark them executed.
+
+        Convenience method for orchestrators that want to validate each action
+        through hard limits before executing it themselves.
+
+        Args:
+            now: Current datetime (passed explicitly for testability).
+
+        Returns:
+            List of rollback Actions whose timeout has expired.
+        """
+        due = [e for e in self._pending if not e.executed and e.execute_at <= now]
+        actions = []
+        for entry in due:
+            entry.executed = True
+            actions.append(entry.rollback_action)
+            logger.info(
+                "rollback_due",
+                action=entry.rollback_action.action_type.value,
+                entity=entry.rollback_action.target_entity,
+            )
+        # Purge executed entries
+        self._pending = [e for e in self._pending if not e.executed]
+        return actions
+
     # ------------------------------------------------------------------
     # Cancellation
     # ------------------------------------------------------------------

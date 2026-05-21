@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import traceback
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -157,7 +158,12 @@ class Orchestrator:
             try:
                 await self._realtime_cycle()
             except Exception as exc:
-                self._log.error("realtime_cycle_error", error=str(exc))
+                self._log.error(
+                    "realtime_cycle_error",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    traceback=traceback.format_exc(),
+                )
             await asyncio.sleep(REALTIME_INTERVAL)
 
     async def _realtime_cycle(self) -> None:

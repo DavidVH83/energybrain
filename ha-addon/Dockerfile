@@ -13,9 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Install EnergyBrain and all its dependencies from GitHub
+# Install EnergyBrain — pinned to commit so Docker cache busts on every update
+# Update this hash after each push: git rev-parse HEAD
+ARG ENERGYBRAIN_COMMIT=3813510e0d02c67d94b571eb1ba553d3ace7f7f1
 RUN pip install --no-cache-dir \
-    "git+https://github.com/DavidVH83/energybrain.git#egg=energybrain"
+    "git+https://github.com/DavidVH83/energybrain.git@${ENERGYBRAIN_COMMIT}#egg=energybrain"
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh

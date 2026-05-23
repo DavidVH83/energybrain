@@ -48,9 +48,22 @@ class MarstekAgent(BaseAgent[BatteryState]):
         mode_str, _ = await self._get_str(_MODE_ENTITY, fallback="Auto")
         ct_connected, ct_st = await self._get_bool(_CT_CONNECTED_ENTITY, fallback=True)
 
-        # CT clamp disconnected → ERROR so watchdog can alert the user
-        if ct_st == DeviceStatus.ONLINE and not ct_connected:
+        # CT not connected via local API — happens with P1 Beta mode (V153 firmware).
+        # Marstek IS working (app shows live data) but local API doesn't expose
+        # measurement registers in this configuration.
+        ct_no_local = ct_st == DeviceStatus.ONLINE and not ct_connected
+
+        if ct_no_local:
             status = DeviceStatus.ERROR
+            # SoC sensor is also unavailable in P1 Beta mode — use 50% as neutral
+            # assumption instead of 0% to avoid false "battery empty" decisions.
+            if soc_st != DeviceStatus.ONLINE:
+                soc_pct = 50.0
+                self._log.warning(
+                    "marstek_soc_unavailable",
+                    reason="P1 Beta mode: local API does not expose SoC. Using 50% neutral fallback.",
+                    firmware="V153",
+                )
         else:
             status = self._determine_status(soc_st, pwr_st)
 

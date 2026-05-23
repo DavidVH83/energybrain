@@ -27,7 +27,7 @@ cards:
       - entity: sensor.goodwe_pv_power
         name: Zonnepanelen
         icon: mdi:solar-power
-      - entity: sensor.homewizard_p1_power
+      - entity: sensor.p1_meter_vermogen
         name: Net
         icon: mdi:transmission-tower
       - entity: sensor.marstek_venuse_state_of_charge
@@ -155,16 +155,16 @@ cards:
   - type: entities
     title: 📊 Energie details
     entities:
-      - entity: sensor.goodwe_today_generation
+      - entity: sensor.goodwe_today_s_pv_generation
         name: PV vandaag (kWh)
         icon: mdi:solar-panel
-      - entity: sensor.homewizard_p1_total_power_import_kwh
+      - entity: sensor.p1_meter_energie_import
         name: Import vandaag (kWh)
         icon: mdi:home-import-outline
-      - entity: sensor.homewizard_p1_total_power_export_kwh
+      - entity: sensor.p1_meter_energie_export
         name: Export vandaag (kWh)
         icon: mdi:home-export-outline
-      - entity: sensor.marstek_venuse_battery_power
+      - entity: sensor.marstek_venuse_power
         name: Batterij vermogen (W)
         icon: mdi:battery-charging
 
@@ -177,10 +177,10 @@ cards:
   - type: entities
     title: 🔧 Systeem info
     entities:
-      - entity: sensor.goodwe_operating_mode
+      - entity: select.goodwe_bedrijfsmodus_omvormer
         name: GoodWe modus
         icon: mdi:solar-power-variant
-      - entity: sensor.marstek_venuse_working_mode
+      - entity: select.marstek_venuse_operating_mode
         name: Marstek modus
         icon: mdi:battery-sync
       - entity: sensor.marstek_venuse_battery_temperature

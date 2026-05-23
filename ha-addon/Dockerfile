@@ -14,9 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install EnergyBrain — commit hash in RUN-regel zodat Docker cache altijd bust
-# 2572eb1 = fix: traceback logging in realtime_loop voor diagnose lege error
+# c32bb6e = fix: GoodWe bedrijfsmodus lowercase + traceback logging
 RUN pip install --no-cache-dir \
-    "git+https://github.com/DavidVH83/energybrain.git@2572eb1c776464b797013beb50c76ce76fa03f16#egg=energybrain"
+    "git+https://github.com/DavidVH83/energybrain.git@c32bb6e5adbaad3b7ffd1780dd3b104b55b50838#egg=energybrain"
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh

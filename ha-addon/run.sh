@@ -21,7 +21,7 @@ export LOG_LEVEL=$(jq -r '.log_level'                     "$OPTIONS")
 export DB_PATH="/addon_configs/energybrain/energybrain.db"
 mkdir -p /addon_configs/energybrain
 
-echo "[EnergyBrain] Starting v0.3.3"
+echo "[EnergyBrain] Starting v0.3.4"
 echo "[EnergyBrain] HA URL: ${HA_URL}"
 echo "[EnergyBrain] Marstek write: ${MARSTEK_WRITE_ENABLED}"
 

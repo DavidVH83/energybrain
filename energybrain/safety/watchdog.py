@@ -227,9 +227,13 @@ class Watchdog:
         return None
 
     def _check_battery_soc(self, state: SystemState) -> Optional[Action]:
-        """Check 3: Battery SoC < 8% → force passive mode (stop discharge)."""
+        """Check 3: Battery SoC < 8% → force passive mode (stop discharge).
+
+        Skip when status is ERROR (CT disconnected) because SoC reads 0.0
+        as a fallback and would cause a false critical alarm.
+        """
         if (
-            state.battery.status != DeviceStatus.OFFLINE
+            state.battery.status == DeviceStatus.ONLINE
             and state.battery.soc_pct < _BATTERY_CRITICAL_SOC_PCT
         ):
             return Action(

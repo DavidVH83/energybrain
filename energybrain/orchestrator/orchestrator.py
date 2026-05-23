@@ -119,6 +119,7 @@ class Orchestrator:
         self._dispatch_plan = None
         self._last_decision_at: Optional[datetime] = None
         self._scheduled_done: dict[str, str] = {}  # job_key → date/hour it last ran
+        self._last_action_str: str = ""  # shown in dashboard status banner
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -192,12 +193,51 @@ class Orchestrator:
         # 5. Scheduled jobs
         await self._run_scheduled_jobs(state, now)
 
+        # 6. Update HA status banner
+        await self._update_ha_status(state, now)
+
         self._log.debug(
             "realtime_cycle_done",
             pv_w=round(state.pv.power_w),
             soc=round(state.battery.soc_pct),
             indoor_c=round(state.heat_pump.indoor_temp_c, 1),
         )
+
+    async def _update_ha_status(self, state: SystemState, now: datetime) -> None:
+        """Write live status to HA input_text helpers for the dashboard banner."""
+        try:
+            pv_w = round(state.pv.power_w)
+            soc = round(state.battery.soc_pct)
+            net_w = round(state.grid.power_w)
+            net_sign = "+" if net_w >= 0 else ""
+            status = (
+                f"Actief | PV: {pv_w}W | SoC: {soc}% | Net: {net_sign}{net_w}W"
+            )
+
+            last_action = self._last_action_str or "—"
+
+            if self._day_plan and self._day_plan.scheduled_tasks:
+                task_strs = [
+                    f"{t.name} {t.planned_start.strftime('%H:%M')}"
+                    for t in self._day_plan.scheduled_tasks[:4]
+                ]
+                today_plan = " · ".join(task_strs)
+            else:
+                today_plan = "Geen dagplan beschikbaar"
+
+            upcoming = [
+                t for t in (self._day_plan.scheduled_tasks if self._day_plan else [])
+                if t.planned_start > now
+            ]
+            if upcoming:
+                nxt = upcoming[0]
+                next_action = f"{nxt.name} om {nxt.planned_start.strftime('%H:%M')}"
+            else:
+                next_action = "—"
+
+            await self._ha_control.update_status(status, last_action, today_plan, next_action)
+        except Exception as exc:
+            self._log.warning("ha_status_update_failed", error=str(exc))
 
     # ------------------------------------------------------------------
     # Task 2 — Day planner loop (15 min)
@@ -485,6 +525,10 @@ class Orchestrator:
             return
         try:
             await self._home_connect.start_appliance(task.appliance_type)
+            reden = "deadline" if task.is_forced else "zonnestroom"
+            self._last_action_str = (
+                f"{task.appliance_type.value} gestart om {now.strftime('%H:%M')} ({reden})"
+            )
             notif_type = NotificationType.APPLIANCE_FORCE_STARTED if task.is_forced \
                 else NotificationType.APPLIANCE_STARTED
             await self._notifier.send(
@@ -503,6 +547,9 @@ class Orchestrator:
                 "select", "select_option",
                 entity_id="select.opentherm_ssw_modus",
                 option="Boost",
+            )
+            self._last_action_str = (
+                f"DHW boost gestart om {datetime.now().strftime('%H:%M')} (surplus)"
             )
             self._log.info("dhw_boost_triggered", reason="surplus_window")
         except Exception as exc:

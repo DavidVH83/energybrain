@@ -1,6 +1,6 @@
 [project]
 name = "energybrain"
-version = "0.3.2"
+version = "0.3.3"
 description = "Intelligent learning home energy management system"
 requires-python = ">=3.11"
 

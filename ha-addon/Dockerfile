@@ -14,9 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install EnergyBrain — commit hash in RUN-regel zodat Docker cache altijd bust
-# c32bb6e = fix: GoodWe bedrijfsmodus lowercase + traceback logging
+# 02742df = fix: watchdog SoC alarm skip bij CT disconnected
 RUN pip install --no-cache-dir \
-    "git+https://github.com/DavidVH83/energybrain.git@c32bb6e5adbaad3b7ffd1780dd3b104b55b50838#egg=energybrain"
+    "git+https://github.com/DavidVH83/energybrain.git@02742df44078ab3498a1d289427dc4a72b61d788#egg=energybrain"
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh

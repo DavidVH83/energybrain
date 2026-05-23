@@ -120,6 +120,8 @@ class Orchestrator:
         self._last_decision_at: Optional[datetime] = None
         self._scheduled_done: dict[str, str] = {}  # job_key → date/hour it last ran
         self._last_action_str: str = ""  # shown in dashboard status banner
+        self._executed_today: list[str] = []  # log of today's executed actions
+        self._executed_today_date: Optional[str] = None  # reset daily
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -203,39 +205,84 @@ class Orchestrator:
             indoor_c=round(state.heat_pump.indoor_temp_c, 1),
         )
 
+    def _log_executed_action(self, description: str, now: datetime) -> None:
+        """Track an executed action for today's execution log (resets at midnight)."""
+        today = now.strftime("%Y-%m-%d")
+        if self._executed_today_date != today:
+            self._executed_today = []
+            self._executed_today_date = today
+        entry = f"{now.strftime('%H:%M')} {description}"
+        if entry not in self._executed_today:
+            self._executed_today.append(entry)
+        # Keep last 6 entries, join in 255-char budget
+        self._last_action_str = entry
+
     async def _update_ha_status(self, state: SystemState, now: datetime) -> None:
-        """Write live status to HA input_text helpers for the dashboard banner."""
+        """Write live status + plan overview to HA input_text helpers."""
         try:
+            # ── Status line ──────────────────────────────────────────────────
             pv_w = round(state.pv.power_w)
             soc = round(state.battery.soc_pct)
             net_w = round(state.grid.power_w)
             net_sign = "+" if net_w >= 0 else ""
-            status = (
-                f"Actief | PV: {pv_w}W | SoC: {soc}% | Net: {net_sign}{net_w}W"
-            )
+            status = f"Actief | PV: {pv_w}W | SoC: {soc}% | Net: {net_sign}{net_w}W"
 
+            # ── Last action ──────────────────────────────────────────────────
             last_action = self._last_action_str or "—"
 
-            if self._day_plan and self._day_plan.scheduled_tasks:
-                task_strs = [
-                    f"{t.name} {t.planned_start.strftime('%H:%M')}"
-                    for t in self._day_plan.scheduled_tasks[:4]
-                ]
+            # ── Today plan (scheduled tasks) ─────────────────────────────────
+            tasks = self._day_plan.scheduled_tasks if self._day_plan else []
+            if tasks:
+                task_strs = []
+                for t in tasks[:5]:
+                    icon = "🔴" if t.is_forced else "🟡"
+                    task_strs.append(f"{icon} {t.name} {t.planned_start.strftime('%H:%M')}")
                 today_plan = " · ".join(task_strs)
             else:
                 today_plan = "Geen dagplan beschikbaar"
 
-            upcoming = [
-                t for t in (self._day_plan.scheduled_tasks if self._day_plan else [])
-                if t.planned_start > now
-            ]
+            # ── Next action ──────────────────────────────────────────────────
+            upcoming = [t for t in tasks if t.planned_start > now]
             if upcoming:
                 nxt = upcoming[0]
-                next_action = f"{nxt.name} om {nxt.planned_start.strftime('%H:%M')}"
+                forced_note = " (deadline!)" if nxt.is_forced else ""
+                next_action = f"{nxt.name} om {nxt.planned_start.strftime('%H:%M')}{forced_note}"
             else:
                 next_action = "—"
 
-            await self._ha_control.update_status(status, last_action, today_plan, next_action)
+            # ── Plan summary (PV forecast + surplus windows) ─────────────────
+            if self._day_plan:
+                pv_kwh = self._day_plan.total_pv_forecast_kwh
+                windows = self._day_plan.surplus_windows
+                if windows:
+                    win_strs = [
+                        f"{w.start_hour}:00-{w.end_hour}:00 ({w.avg_surplus_w/1000:.1f}kW)"
+                        for w in windows[:3]
+                    ]
+                    plan_summary = (
+                        f"☀️ {pv_kwh:.1f}kWh | "
+                        f"Surplus: {' | '.join(win_strs)} | "
+                        f"Plan: {self._day_plan.generated_at.strftime('%H:%M')}"
+                    )[:255]
+                else:
+                    plan_summary = f"☀️ {pv_kwh:.1f}kWh voorspeld | Geen surplus vensters"
+            else:
+                plan_summary = "Dagplan nog niet aangemaakt (wordt 06:30 gemaakt)"
+
+            # ── Executed today ────────────────────────────────────────────────
+            today = now.strftime("%Y-%m-%d")
+            if self._executed_today_date != today:
+                self._executed_today = []
+                self._executed_today_date = today
+            if self._executed_today:
+                executed_today = " · ".join(self._executed_today[-6:])[:255]
+            else:
+                executed_today = "Nog niets uitgevoerd vandaag"
+
+            await self._ha_control.update_status(
+                status, last_action, today_plan, next_action,
+                plan_summary, executed_today,
+            )
         except Exception as exc:
             self._log.warning("ha_status_update_failed", error=str(exc))
 
@@ -526,8 +573,8 @@ class Orchestrator:
         try:
             await self._home_connect.start_appliance(task.appliance_type)
             reden = "deadline" if task.is_forced else "zonnestroom"
-            self._last_action_str = (
-                f"{task.appliance_type.value} gestart om {now.strftime('%H:%M')} ({reden})"
+            self._log_executed_action(
+                f"{task.appliance_type.value} gestart ({reden})", now
             )
             notif_type = NotificationType.APPLIANCE_FORCE_STARTED if task.is_forced \
                 else NotificationType.APPLIANCE_STARTED
@@ -548,9 +595,7 @@ class Orchestrator:
                 entity_id="select.opentherm_ssw_modus",
                 option="Boost",
             )
-            self._last_action_str = (
-                f"DHW boost gestart om {datetime.now().strftime('%H:%M')} (surplus)"
-            )
+            self._log_executed_action("DHW boost gestart (surplus)", datetime.now())
             self._log.info("dhw_boost_triggered", reason="surplus_window")
         except Exception as exc:
             self._log.warning("dhw_boost_failed", error=str(exc))

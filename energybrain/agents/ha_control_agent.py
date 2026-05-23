@@ -28,6 +28,8 @@ _STATUS_TEXT = "input_text.energybrain_status"
 _LAST_ACTION = "input_text.energybrain_last_action"
 _TODAY_PLAN = "input_text.energybrain_today_plan"
 _NEXT_ACTION = "input_text.energybrain_next_action"
+_PLAN_SUMMARY = "input_text.energybrain_plan_summary"
+_EXECUTED_TODAY = "input_text.energybrain_executed_today"
 
 
 class HAControlAgent(BaseAgent[ControlState]):
@@ -64,6 +66,8 @@ class HAControlAgent(BaseAgent[ControlState]):
         last_action: str,
         today_plan: str,
         next_action: str,
+        plan_summary: str = "",
+        executed_today: str = "",
     ) -> None:
         """Write EnergyBrain status back to HA input_text helpers.
 
@@ -74,6 +78,8 @@ class HAControlAgent(BaseAgent[ControlState]):
             (_LAST_ACTION, last_action),
             (_TODAY_PLAN, today_plan),
             (_NEXT_ACTION, next_action),
+            (_PLAN_SUMMARY, plan_summary),
+            (_EXECUTED_TODAY, executed_today),
         ):
             await self._call_service("input_text", "set_value", entity, value=value)
 

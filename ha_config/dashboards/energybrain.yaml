@@ -262,3 +262,62 @@ views:
             name: Modus
           - entity: input_text.energybrain_override_reason
             name: Override reden
+
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # TAB 5 — DAGPLAN
+  # ═══════════════════════════════════════════════════════════════════════════
+  - title: Dagplan
+    icon: mdi:calendar-clock
+    path: dagplan
+    cards:
+
+      # ── PV forecast & surplus vensters ──────────────────────────────────────
+      - type: markdown
+        title: ☀️ Zonne-energie vandaag
+        content: >
+          {{ states('input_text.energybrain_plan_summary') }}
+
+      # ── Geplande taken ──────────────────────────────────────────────────────
+      - type: markdown
+        title: 📋 Geplande taken
+        content: >
+          {{ states('input_text.energybrain_today_plan') }}
+
+
+          **Volgende:** {{ states('input_text.energybrain_next_action') }}
+
+      # ── Wat is er uitgevoerd ────────────────────────────────────────────────
+      - type: markdown
+        title: ✅ Uitgevoerd vandaag
+        content: >
+          {{ states('input_text.energybrain_executed_today') }}
+
+      # ── Laatste actie ───────────────────────────────────────────────────────
+      - type: markdown
+        title: 🕐 Laatste actie
+        content: >
+          {{ states('input_text.energybrain_last_action') }}
+
+      # ── Live staat toestellen ───────────────────────────────────────────────
+      - type: glance
+        title: 🏠 Toestellen nu
+        show_name: true
+        show_icon: true
+        show_state: true
+        entities:
+          - entity: sensor.vaatwasser_status
+            name: Vaatwasser
+            icon: mdi:dishwasher
+          - entity: sensor.wasmachine_status
+            name: Wasmachine
+            icon: mdi:washing-machine
+          - entity: sensor.droger_status
+            name: Droger
+            icon: mdi:tumble-dryer
+          - entity: sensor.opentherm_sww_temperatuur
+            name: Boiler
+            icon: mdi:water-boiler
+          - entity: sensor.goodwe_pv_power
+            name: PV nu
+            icon: mdi:solar-power

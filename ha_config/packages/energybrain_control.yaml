@@ -180,6 +180,18 @@ input_text:
     max: 255
     initial: ""
 
+  energybrain_plan_summary:
+    name: "Plan samenvatting"
+    icon: mdi:calendar-check
+    max: 255
+    initial: ""
+
+  energybrain_executed_today:
+    name: "Uitgevoerd vandaag"
+    icon: mdi:check-all
+    max: 255
+    initial: ""
+
 
 # ===========================================================================
 # TIMERS — beheren override/boost verloop zonder Python code

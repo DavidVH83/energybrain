@@ -546,7 +546,7 @@ class Orchestrator:
             await self._ha.call_service(
                 "select", "select_option",
                 entity_id="select.goodwe_bedrijfsmodus_omvormer",
-                option="General",
+                option="general",
             )
             self._log.info("startup_goodwe_set_general")
         except Exception as exc:

@@ -14,9 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install EnergyBrain — commit hash in RUN-regel zodat Docker cache altijd bust
-# 19e4809 = fix: Marstek SoC 50% fallback bij P1 Beta / V153 firmware
+# 3f78a71 = feat: live status banner in HA dashboard (update_status elke cyclus)
 RUN pip install --no-cache-dir \
-    "git+https://github.com/DavidVH83/energybrain.git@19e48090f8048f3c4354347a848764cb2eb8f09f#egg=energybrain"
+    "git+https://github.com/DavidVH83/energybrain.git@3f78a71fe465022ce80990aa36ea9e49dc809604#egg=energybrain"
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh

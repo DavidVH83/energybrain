@@ -23,10 +23,25 @@ from energybrain.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# Priority order: washing machine first (laundry can be hung to dry),
+# then dishwasher, dryer last (rarely used).
+APPLIANCE_PRIORITY_ORDER = [
+    ApplianceType.WASHING_MACHINE,
+    ApplianceType.DISHWASHER,
+    ApplianceType.DRYER,
+]
+
 APPLIANCE_DEADLINES: dict[ApplianceType, dict] = {
     ApplianceType.DISHWASHER:      {"max_wait_h": 4,  "hard_deadline": time(20, 0)},
     ApplianceType.WASHING_MACHINE: {"max_wait_h": 6,  "hard_deadline": time(20, 0)},
     ApplianceType.DRYER:           {"max_wait_h": 8,  "hard_deadline": time(21, 0)},
+}
+
+# Estimated slot duration per appliance (hours) for staggering planned times
+APPLIANCE_SLOT_H: dict[ApplianceType, float] = {
+    ApplianceType.WASHING_MACHINE: 2.0,   # wash + buffer to hang laundry
+    ApplianceType.DISHWASHER:      1.5,
+    ApplianceType.DRYER:           2.0,
 }
 
 # Minimum surplus to consider an appliance run worthwhile
@@ -223,20 +238,26 @@ class DayPlanner:
     def _schedule_tasks(
         self, surplus_windows: list[SurplusWindow], state: SystemState
     ) -> list[ScheduledTask]:
-        """Two-pass scheduling: solar-optimized first, then deadline enforcement."""
+        """Two-pass scheduling: solar-optimized first, then deadline enforcement.
+
+        Priority order: DHW > Washing Machine > Dishwasher > Dryer.
+        Tasks are staggered so they never overlap (each starts after the previous finishes).
+        remote_start_allowed is checked at execution time, not here — user may load
+        the machine after the plan is built.
+        """
         tasks: list[ScheduledTask] = []
         now = datetime.now()
 
         # DHW — always priority 1
-        tasks.append(self._schedule_dhw(surplus_windows, now))
+        dhw_task = self._schedule_dhw(surplus_windows, now)
+        tasks.append(dhw_task)
 
-        # Appliances — pass 1: fit in surplus; pass 2: deadline enforcement
+        # Stagger: next appliance starts after DHW finishes
+        next_earliest = dhw_task.planned_start + timedelta(hours=DHW_ESTIMATED_DURATION_H)
+
+        # Appliances in priority order: Washing Machine > Dishwasher > Dryer
         priority = 2
-        for appliance in [
-            ApplianceType.DISHWASHER,
-            ApplianceType.WASHING_MACHINE,
-            ApplianceType.DRYER,
-        ]:
+        for appliance in APPLIANCE_PRIORITY_ORDER:
             app_state = state.appliances.get(appliance)
             if app_state is None or app_state.is_running:
                 priority += 1
@@ -248,19 +269,23 @@ class DayPlanner:
             max_wait_h = config["max_wait_h"]
 
             planned_start, is_forced = self._find_start_time(
-                surplus_windows, min_surplus, now, deadline, max_wait_h, app_state
+                surplus_windows, min_surplus, now, deadline, max_wait_h, app_state,
+                not_before=next_earliest,
             )
+            slot_h = APPLIANCE_SLOT_H[appliance]
             tasks.append(ScheduledTask(
                 name=appliance.value,
                 appliance_type=appliance,
                 planned_start=planned_start,
                 min_surplus_w=min_surplus,
-                estimated_duration_hours=1.5,
+                estimated_duration_hours=slot_h,
                 hard_deadline=deadline,
                 max_wait_hours=float(max_wait_h),
                 priority=priority,
                 is_forced=is_forced,
             ))
+            # Next appliance cannot start before this one finishes
+            next_earliest = planned_start + timedelta(hours=slot_h)
             priority += 1
 
         return tasks
@@ -304,13 +329,18 @@ class DayPlanner:
         deadline: time,
         max_wait_h: int,
         app_state: ApplianceState,
+        not_before: Optional[datetime] = None,
     ) -> tuple[datetime, bool]:
-        """Return (planned_start, is_forced)."""
+        """Return (planned_start, is_forced).
+
+        not_before: earliest allowed start (for staggering — previous task must finish first).
+        """
         # Check deadline first
         if app_state.waiting_since:
             force, _ = self.should_force_start(app_state.appliance_type, app_state.waiting_since)
             if force:
-                return now, True
+                start = max(now, not_before) if not_before else now
+                return start, True
 
         # Try to find a surplus window
         for window in surplus_windows:
@@ -320,6 +350,9 @@ class DayPlanner:
                 )
                 if planned < now:
                     planned += timedelta(days=1)
+                # Honour stagger constraint
+                if not_before and planned < not_before:
+                    planned = not_before
                 deadline_dt = now.replace(
                     hour=deadline.hour, minute=deadline.minute, second=0, microsecond=0
                 )
@@ -332,6 +365,8 @@ class DayPlanner:
         )
         if deadline_dt < now:
             deadline_dt += timedelta(days=1)
+        if not_before and deadline_dt < not_before:
+            deadline_dt = not_before
         return deadline_dt, True
 
     @staticmethod

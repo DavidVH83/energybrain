@@ -43,6 +43,7 @@ class NotificationType(Enum):
     SOLAR_OPPORTUNITY = "solar_opportunity"
     APPLIANCE_STARTED = "appliance_started"
     APPLIANCE_FORCE_STARTED = "force_started"
+    APPLIANCE_REMOTE_START_REMINDER = "remote_start_reminder"  # machine klaar maar remote start vergeten
     DHW_BOOST = "dhw_boost"
     SAFETY_ALARM = "safety_alarm"              # Always send, no throttle
     DAILY_SUMMARY = "daily_summary"

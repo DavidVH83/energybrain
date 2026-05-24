@@ -122,6 +122,7 @@ class Orchestrator:
         self._last_action_str: str = ""  # shown in dashboard status banner
         self._executed_today: list[str] = []  # log of today's executed actions
         self._executed_today_date: Optional[str] = None  # reset daily
+        self._last_control_state = None  # ControlState, refreshed every cycle
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -191,6 +192,9 @@ class Orchestrator:
         # 4. Execute due DayPlan tasks
         if self._day_plan:
             await self._execute_due_tasks(state, now)
+
+        # 4.5. Temperature control — lower setpoint on hot days
+        await self._apply_temperature_control(state)
 
         # 5. Scheduled jobs
         await self._run_scheduled_jobs(state, now)
@@ -525,6 +529,7 @@ class Orchestrator:
             appliances = {}
         if isinstance(control, Exception):
             control = None
+        self._last_control_state = control  # store for temperature control etc.
 
         return SystemState(
             pv=pv,
@@ -546,17 +551,85 @@ class Orchestrator:
     # ------------------------------------------------------------------
 
     async def _execute_due_tasks(self, state: SystemState, now: datetime) -> None:
-        """Check DayPlan scheduled tasks and execute any that are due."""
+        """Check DayPlan scheduled tasks and execute any that are due.
+
+        Safety guards (all must pass before starting an appliance):
+          1. remote_start_allowed = True  (machine is loaded and program set)
+             → If False at deadline (forced), send "remote start vergeten" notification.
+          2. not already running
+          3. available surplus >= min_surplus_w  (unless forced by deadline)
+             → Multiple appliances may run simultaneously when surplus is sufficient.
+        """
         if not self._day_plan:
             return
+
+        # Track surplus already committed to appliances started this cycle
+        committed_surplus_w = 0.0
+
         for task in self._day_plan.scheduled_tasks:
-            if task.planned_start <= now <= task.planned_start + timedelta(minutes=2):
-                if task.appliance_type is not None:
-                    app_state = state.appliances.get(task.appliance_type)
-                    if app_state and not app_state.is_running:
-                        await self._start_appliance(task, state, now)
-                elif task.name == "dhw_boost":
-                    await self._trigger_dhw_boost(state)
+            if not (task.planned_start <= now <= task.planned_start + timedelta(minutes=2)):
+                continue
+
+            if task.appliance_type is not None:
+                app_state = state.appliances.get(task.appliance_type)
+                if not app_state:
+                    continue
+
+                # Guard 1: machine must be loaded and ready for remote start
+                if not app_state.remote_start_allowed:
+                    if task.is_forced:
+                        # Deadline reached but machine not ready — notify user
+                        await self._notifier.send(
+                            NotificationType.APPLIANCE_REMOTE_START_REMINDER,
+                            f"EnergyBrain: {task.appliance_type.value} — remote start vergeten?",
+                            f"{task.appliance_type.value} stond gepland om "
+                            f"{task.planned_start.strftime('%H:%M')} maar is niet gestart: "
+                            f"remote start staat niet aan.\n"
+                            f"Activeer remote start als het toestel klaar staat.",
+                        )
+                    self._log.info(
+                        "appliance_skip_not_ready",
+                        appliance=task.name,
+                        reason="remote_start_allowed=False",
+                        forced=task.is_forced,
+                    )
+                    continue
+
+                # Guard 2: not already running
+                if app_state.is_running:
+                    continue
+
+                # Guard 3: available surplus after already-committed appliances
+                if not task.is_forced:
+                    available = state.grid.surplus_w - committed_surplus_w
+                    if available < task.min_surplus_w:
+                        self._log.info(
+                            "appliance_skip_low_surplus",
+                            appliance=task.name,
+                            surplus_w=round(state.grid.surplus_w),
+                            committed_w=round(committed_surplus_w),
+                            available_w=round(available),
+                            required_w=round(task.min_surplus_w),
+                        )
+                        continue
+
+                await self._start_appliance(task, state, now)
+                committed_surplus_w += task.min_surplus_w
+
+            elif task.name == "dhw_boost":
+                # DHW boost: check available surplus (after other committed appliances)
+                if not task.is_forced:
+                    available = state.grid.surplus_w - committed_surplus_w
+                    if available < task.min_surplus_w:
+                        self._log.info(
+                            "dhw_boost_skip_low_surplus",
+                            surplus_w=round(state.grid.surplus_w),
+                            available_w=round(available),
+                            required_w=round(task.min_surplus_w),
+                        )
+                        continue
+                await self._trigger_dhw_boost(state)
+                committed_surplus_w += task.min_surplus_w
 
     async def _start_appliance(self, task, state: SystemState, now: datetime) -> None:
         from energybrain.models import Action
@@ -599,6 +672,46 @@ class Orchestrator:
             self._log.info("dhw_boost_triggered", reason="surplus_window")
         except Exception as exc:
             self._log.warning("dhw_boost_failed", error=str(exc))
+
+    async def _apply_temperature_control(self, state: SystemState) -> None:
+        """Lower Anna setpoint to 19°C when indoor temp exceeds 22°C.
+
+        Prevents the heat pump from heating on warm days.
+        Only active when brain_mode = 'auto' and brain is enabled.
+        Does NOT auto-restore — user adjusts setpoint via HA override or manually.
+        """
+        try:
+            control = self._last_control_state
+            # Skip if brain is disabled or not in auto mode
+            if control is not None:
+                if not getattr(control, "brain_enabled", True):
+                    return
+                if getattr(control, "brain_mode", "auto") != "auto":
+                    return
+                if getattr(control, "vacation_active", False):
+                    return
+
+            indoor = state.heat_pump.indoor_temp_c
+            current_setpoint = state.heat_pump.setpoint_c
+
+            if indoor > 22.0 and current_setpoint > 19.0:
+                await self._ha.call_service(
+                    "climate", "set_temperature",
+                    entity_id="climate.anna",
+                    temperature=19.0,
+                )
+                self._log_executed_action(
+                    f"Anna setpoint → 19°C (kamer {indoor:.1f}°C, te warm)",
+                    datetime.now(),
+                )
+                self._log.info(
+                    "temperature_lowered_hot_day",
+                    indoor_c=round(indoor, 1),
+                    outdoor_c=round(state.heat_pump.outdoor_temp_c, 1),
+                    setpoint_was=current_setpoint,
+                )
+        except Exception as exc:
+            self._log.warning("temperature_control_failed", error=str(exc))
 
     async def _execute_action(self, action, state: SystemState) -> None:
         """Execute a validated action (used for rollbacks)."""

@@ -21,6 +21,12 @@ views:
 
           **Volgende:** {{ states('input_text.energybrain_next_action') }}
 
+      # ── Live energiestroom ──────────────────────────────────────────────────
+      - type: markdown
+        title: "⚡ Energiestroom nu"
+        content: >
+          {{ states('input_text.energybrain_live_flow') }}
+
       # ── Live energie ────────────────────────────────────────────────────────
       - type: glance
         title: ⚡ Live energie
@@ -66,6 +72,39 @@ views:
     icon: mdi:lightning-bolt
     path: energie
     cards:
+
+      # ── Energiestroom nu ────────────────────────────────────────────────────
+      - type: markdown
+        title: "⚡ Waar gaat de PV naartoe?"
+        content: >
+          {% set pv = states('sensor.goodwe_pv_power') | float(0) %}
+          {% set bat = states('sensor.marstek_venuse_power') | float(0) %}
+          {% set net = states('sensor.p1_meter_vermogen') | float(0) %}
+          {% set house = [pv - bat + net, 0] | max %}
+          {% set bat_charge = [bat, 0] | max %}
+          {% set export = [(-net), 0] | max %}
+          {% set import_w = [net, 0] | max %}
+
+          | | Vermogen |
+          |---|---|
+          | ☀️ PV productie | **{{ pv | round }} W** |
+          | 🔋 Batterij laadt | {{ bat_charge | round }} W |
+          | 🏠 Huisverbruik | {{ house | round }} W |
+          | 📤 Export naar net | {{ export | round }} W |
+          | 📥 Import van net | {{ import_w | round }} W |
+          | 🔋 SoC batterij | {{ states('sensor.marstek_venuse_state_of_charge') }}% |
+
+      # ── Capaciteitstarief ───────────────────────────────────────────────────
+      - type: markdown
+        title: "📊 Capaciteitstarief"
+        content: >
+          {{ states('input_text.energybrain_capacity_current') or 'Nog geen data — wordt elke 5 min bijgewerkt.' }}
+
+          ---
+          {{ states('input_text.energybrain_capacity_peak') or '' }}
+
+          *Het Belgisch capaciteitstarief is gebaseerd op het hoogste kwartiergemiddelde
+          netafname per maand. Hoe lager de piek, hoe lager het tarief.*
 
       # ── PV & grid details ───────────────────────────────────────────────────
       - type: entities
@@ -272,11 +311,31 @@ views:
     path: dagplan
     cards:
 
+      # ── Live energiestroom (volledig) ───────────────────────────────────────
+      - type: markdown
+        title: "⚡ Energiestroom nu"
+        content: >
+          {{ states('input_text.energybrain_live_flow') or 'Geen data — add-on nog niet gestart.' }}
+
+          ---
+          {% set pv = states('sensor.goodwe_pv_power') | float(0) %}
+          {% set bat = states('sensor.marstek_venuse_power') | float(0) %}
+          {% set net = states('sensor.p1_meter_vermogen') | float(0) %}
+          {% set soc = states('sensor.marstek_venuse_state_of_charge') | float(0) %}
+          {% set house = [pv - bat + net, 0] | max %}
+
+          ☀️ **{{ pv | round }}W** →
+          🔋 **{{ bat | round }}W** bat ({{ soc | round }}%) ·
+          🏠 **{{ house | round }}W** huis ·
+          {{ '📤' if net < 0 else '📥' }} **{{ net | abs | round }}W** {{ 'export' if net < 0 else 'import' }}
+
+          *PV vandaag: {{ states('sensor.goodwe_today_s_pv_generation') }} kWh · Boiler: {{ states('sensor.opentherm_sww_temperatuur') }}°C*
+
       # ── PV forecast & surplus vensters ──────────────────────────────────────
       - type: markdown
         title: ☀️ Zonne-energie vandaag
         content: >
-          {{ states('input_text.energybrain_plan_summary') }}
+          {{ states('input_text.energybrain_plan_summary') or 'Dagplan wordt aangemaakt om 06:30.' }}
 
       # ── Geplande taken ──────────────────────────────────────────────────────
       - type: markdown
@@ -321,3 +380,112 @@ views:
           - entity: sensor.goodwe_pv_power
             name: PV nu
             icon: mdi:solar-power
+
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # TAB 6 — STATISTIEKEN
+  # ═══════════════════════════════════════════════════════════════════════════
+  - title: Statistieken
+    icon: mdi:chart-bar
+    path: statistieken
+    cards:
+
+      # ── Vandaag samenvatting ─────────────────────────────────────────────────
+      - type: markdown
+        title: "📊 Vandaag"
+        content: >
+          {{ states('input_text.energybrain_stats_today') or 'Statistieken beschikbaar na 22:00.' }}
+
+      # ── Financieel vandaag ──────────────────────────────────────────────────
+      - type: markdown
+        title: "💶 Financieel (vandaag)"
+        content: >
+          {{ states('input_text.energybrain_stats_financial') or 'Financieel overzicht beschikbaar na 22:00.' }}
+
+          ---
+          *Berekening: zelfverbruik PV × importtarief + export × exporttarief.*
+
+      # ── Week statistieken ───────────────────────────────────────────────────
+      - type: markdown
+        title: "📅 Deze week (netmeter)"
+        content: >
+          {% set imp_w = states('sensor.energybrain_import_wekelijks') | float(0) %}
+          {% set exp_w = states('sensor.energybrain_export_wekelijks') | float(0) %}
+
+          | | kWh | Financieel |
+          |---|---|---|
+          | 📥 Import (net) | {{ imp_w | round(2) }} kWh | {{ (imp_w * 0.25) | round(2) }} € kosten |
+          | 📤 Export (net) | {{ exp_w | round(2) }} kWh | +{{ (exp_w * 0.036) | round(2) }} € |
+          | 💶 Netto | — | {{ ((exp_w * 0.036) - (imp_w * 0.25)) | round(2) }} € |
+
+          *Weekmeter start te tellen vanaf installatie van v0.3.8.*
+
+      # ── Maand statistieken ──────────────────────────────────────────────────
+      - type: markdown
+        title: "📆 Deze maand (netmeter)"
+        content: >
+          {% set imp_m = states('sensor.energybrain_import_maandelijks') | float(0) %}
+          {% set exp_m = states('sensor.energybrain_export_maandelijks') | float(0) %}
+          {% set export_inc = exp_m * 0.036 %}
+          {% set import_cost = imp_m * 0.25 %}
+
+          | | kWh | Financieel |
+          |---|---|---|
+          | 📥 Import | {{ imp_m | round(2) }} kWh | {{ import_cost | round(2) }} € kosten |
+          | 📤 Export | {{ exp_m | round(2) }} kWh | +{{ export_inc | round(2) }} € |
+          | 💶 Nettoresultaat | — | {{ (export_inc - import_cost) | round(2) }} € |
+
+          *Maandmeter reset elke 1e van de maand.*
+
+      # ── Jaar statistieken ───────────────────────────────────────────────────
+      - type: markdown
+        title: "📈 Dit jaar (netmeter)"
+        content: >
+          {% set imp_y = states('sensor.energybrain_import_jaarlijks') | float(0) %}
+          {% set exp_y = states('sensor.energybrain_export_jaarlijks') | float(0) %}
+
+          | | kWh | Financieel |
+          |---|---|---|
+          | 📥 Import | {{ imp_y | round(1) }} kWh | {{ (imp_y * 0.25) | round(2) }} € |
+          | 📤 Export | {{ exp_y | round(1) }} kWh | +{{ (exp_y * 0.036) | round(2) }} € |
+          | 💶 Nettoresultaat | — | {{ ((exp_y * 0.036) - (imp_y * 0.25)) | round(2) }} € |
+
+          *Jaarmeter reset elk jaar op 1 januari.*
+
+      # ── Capaciteitstarief historiek ─────────────────────────────────────────
+      - type: markdown
+        title: "📊 Capaciteitstarief — live"
+        content: >
+          {{ states('input_text.energybrain_capacity_current') or 'Nog geen kwartierdata.' }}
+
+          ---
+          {{ states('input_text.energybrain_capacity_peak') or '' }}
+
+          ---
+          **Hoe werkt het?**
+          Het Belgische capaciteitstarief wordt bepaald door het hoogste 15-minuten
+          gemiddelde netafname per maand. EnergyBrain bewaakt dit live en waarschuwt
+          wanneer een nieuwe maandpiek dreigt.
+
+      # ── Live glance ─────────────────────────────────────────────────────────
+      - type: glance
+        title: "⚡ Live nu"
+        show_name: true
+        show_icon: true
+        show_state: true
+        entities:
+          - entity: sensor.goodwe_pv_power
+            name: PV (W)
+            icon: mdi:solar-power
+          - entity: sensor.p1_meter_vermogen
+            name: Net (W)
+            icon: mdi:transmission-tower
+          - entity: sensor.marstek_venuse_power
+            name: Batterij (W)
+            icon: mdi:battery-charging
+          - entity: sensor.goodwe_today_s_pv_generation
+            name: PV vandaag
+            icon: mdi:solar-panel
+          - entity: sensor.marstek_venuse_state_of_charge
+            name: SoC
+            icon: mdi:battery

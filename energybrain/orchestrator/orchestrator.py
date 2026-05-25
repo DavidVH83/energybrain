@@ -124,6 +124,16 @@ class Orchestrator:
         self._executed_today_date: Optional[str] = None  # reset daily
         self._last_control_state = None  # ControlState, refreshed every cycle
 
+        # Capacity tariff tracking (Belgian quarter-hour peak)
+        self._capacity_samples: list[float] = []   # grid import W, last 15 readings
+        self._capacity_monthly_peak_w: float = 0.0
+        self._capacity_peak_month: str = ""         # YYYY-MM, reset each month
+        self._capacity_window_start: Optional[datetime] = None
+
+        # Statistics accumulation (reset at midnight)
+        self._stats_pv_today_kwh: float = 0.0      # read from GoodWe daily sensor
+        self._stats_accumulated_date: Optional[str] = None  # YYYY-MM-DD
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -196,6 +206,9 @@ class Orchestrator:
         # 4.5. Temperature control — lower setpoint on hot days
         await self._apply_temperature_control(state)
 
+        # 4.6. Capacity tariff — track 15-min grid import average
+        await self._track_capacity_tariff(state, now)
+
         # 5. Scheduled jobs
         await self._run_scheduled_jobs(state, now)
 
@@ -220,6 +233,36 @@ class Orchestrator:
             self._executed_today.append(entry)
         # Keep last 6 entries, join in 255-char budget
         self._last_action_str = entry
+
+    def _build_live_flow(self, state: SystemState) -> str:
+        """Build live energy flow string: PV → Battery / House / Grid."""
+        pv_w = state.pv.power_w
+        battery_w = state.battery.power_w      # positive = charging
+        grid_w = state.grid.power_w            # positive = importing
+
+        # house = pv - battery + grid (energy balance)
+        house_w = max(0.0, pv_w - battery_w + grid_w)
+
+        battery_label = (
+            f"🔋 Laadt {battery_w:+.0f}W" if battery_w > 50
+            else f"🔋 Ontlaadt {battery_w:.0f}W" if battery_w < -50
+            else "🔋 Standby"
+        )
+        grid_label = (
+            f"🔌 Export {-grid_w:.0f}W" if grid_w < -50
+            else f"📥 Import {grid_w:.0f}W" if grid_w > 50
+            else "🔌 Neutraal"
+        )
+        dhw = "🚿 DHW boost" if state.heat_pump.dhw_boost_active else ""
+        parts = [
+            f"☀️ PV {pv_w:.0f}W",
+            battery_label,
+            f"🏠 Huis {house_w:.0f}W",
+            grid_label,
+        ]
+        if dhw:
+            parts.append(dhw)
+        return " · ".join(parts)
 
     async def _update_ha_status(self, state: SystemState, now: datetime) -> None:
         """Write live status + plan overview to HA input_text helpers."""
@@ -287,6 +330,14 @@ class Orchestrator:
                 status, last_action, today_plan, next_action,
                 plan_summary, executed_today,
             )
+
+            # ── Live energy flow ─────────────────────────────────────────────
+            live_flow = self._build_live_flow(state)
+            await self._ha.call_service(
+                "input_text", "set_value",
+                entity_id="input_text.energybrain_live_flow",
+                value=live_flow[:255],
+            )
         except Exception as exc:
             self._log.warning("ha_status_update_failed", error=str(exc))
 
@@ -319,6 +370,10 @@ class Orchestrator:
         date_str = now.strftime("%Y-%m-%d")
         weekday = now.weekday()  # 0=Mon
         day_of_month = now.day
+
+        # 22:00 — Daily statistics + financial summary
+        if h == 22 and m < 1:
+            await self._job_once(f"statistics_{date_str}", self._job_statistics, state)
 
         # 21:00 — PV calibration + outcome logging
         if h == 21 and m < 1:
@@ -712,6 +767,135 @@ class Orchestrator:
                 )
         except Exception as exc:
             self._log.warning("temperature_control_failed", error=str(exc))
+
+    async def _track_capacity_tariff(self, state: SystemState, now: datetime) -> None:
+        """Track 15-minute grid import average for Belgian capacity tariff.
+
+        Belgian capacity tariff = highest monthly 15-min average grid import (kW).
+        Samples grid import every 60 s → averages 15 readings per quarter-hour window.
+        Writes current avg and monthly peak to HA. Sends push notification when
+        the current window threatens to set a new monthly peak.
+        """
+        try:
+            import_w = max(0.0, state.grid.power_w)  # positive = importing, ignore export
+            self._capacity_samples.append(import_w)
+
+            # Keep only last 15 samples (= 15 minutes at 60 s interval)
+            if len(self._capacity_samples) > 15:
+                self._capacity_samples = self._capacity_samples[-15:]
+
+            current_avg_w = sum(self._capacity_samples) / len(self._capacity_samples)
+            current_avg_kw = current_avg_w / 1000.0
+
+            # Reset monthly peak at start of new month
+            month_key = now.strftime("%Y-%m")
+            if self._capacity_peak_month != month_key:
+                self._capacity_monthly_peak_w = 0.0
+                self._capacity_peak_month = month_key
+
+            # Update monthly peak
+            if current_avg_w > self._capacity_monthly_peak_w:
+                self._capacity_monthly_peak_w = current_avg_w
+
+            peak_kw = self._capacity_monthly_peak_w / 1000.0
+
+            # How many minutes left in this 15-min window?
+            minute_in_quarter = now.minute % 15
+            remaining_min = 14 - minute_in_quarter
+
+            # Warn if current window (if sustained) would set new monthly peak
+            warning = ""
+            if len(self._capacity_samples) >= 8 and current_avg_w > self._capacity_monthly_peak_w * 0.9:
+                warning = f" ⚠️ PIEK DREIGT"
+                if current_avg_w > self._capacity_monthly_peak_w and len(self._capacity_samples) == 15:
+                    # New peak confirmed — send push once per window
+                    if self._capacity_window_start != now.replace(
+                        minute=(now.minute // 15) * 15, second=0, microsecond=0
+                    ):
+                        self._capacity_window_start = now.replace(
+                            minute=(now.minute // 15) * 15, second=0, microsecond=0
+                        )
+                        await self._notifier.send(
+                            NotificationType.BATTERY_DISPATCH_STUB,
+                            "EnergyBrain: Capaciteitspiek!",
+                            f"Nieuwe maandpiek: {current_avg_kw:.2f} kW "
+                            f"(was {peak_kw:.2f} kW). Zet nu niets extra aan.",
+                        )
+
+            current_text = (
+                f"{current_avg_kw:.2f} kW gem. nu | "
+                f"Maandpiek: {peak_kw:.2f} kW | "
+                f"{remaining_min} min resterend in kwartier{warning}"
+            )[:255]
+
+            # Write every full minute (avoid flooding — write every 5th sample)
+            if len(self._capacity_samples) % 5 == 0 or warning:
+                await self._ha.call_service(
+                    "input_text", "set_value",
+                    entity_id="input_text.energybrain_capacity_current",
+                    value=current_text,
+                )
+                await self._ha.call_service(
+                    "input_text", "set_value",
+                    entity_id="input_text.energybrain_capacity_peak",
+                    value=f"Maandpiek {month_key}: {peak_kw:.2f} kW",
+                )
+        except Exception as exc:
+            self._log.warning("capacity_tariff_tracking_failed", error=str(exc))
+
+    async def _job_statistics(self, state: SystemState) -> None:
+        """Daily statistics + financial summary. Written to HA at 22:00."""
+        try:
+            pv_today = state.pv.daily_energy_kwh
+            import_today = state.grid.daily_import_kwh
+            export_today = state.grid.daily_export_kwh
+
+            # Self-consumption: PV energy kept in home (not exported)
+            self_use_kwh = max(0.0, pv_today - export_today)
+            # Financial
+            import_price = self._config.static_import_price_eur_kwh
+            export_price = self._config.static_export_price_eur_kwh
+            savings_eur = self_use_kwh * import_price
+            export_income_eur = export_today * export_price
+            total_benefit_eur = savings_eur + export_income_eur
+
+            # House consumption estimate
+            battery_w = state.battery.power_w
+            house_kwh_approx = max(0.0, pv_today - export_today + import_today)
+
+            today_text = (
+                f"☀️ PV: {pv_today:.1f}kWh | "
+                f"📥 Import: {import_today:.1f}kWh | "
+                f"📤 Export: {export_today:.1f}kWh | "
+                f"🏠 Huis ~{house_kwh_approx:.1f}kWh | "
+                f"🔋 SoC: {state.battery.soc_pct:.0f}%"
+            )[:255]
+
+            financial_text = (
+                f"Vandaag: bespaard {savings_eur:.2f}€ (zelfverbruik {self_use_kwh:.1f}kWh) + "
+                f"export {export_income_eur:.2f}€ ({export_today:.1f}kWh) = "
+                f"totaal {total_benefit_eur:.2f}€ | "
+                f"Tarieven: {import_price:.3f}€/kWh import, {export_price:.3f}€/kWh export"
+            )[:255]
+
+            await self._ha.call_service(
+                "input_text", "set_value",
+                entity_id="input_text.energybrain_stats_today",
+                value=today_text,
+            )
+            await self._ha.call_service(
+                "input_text", "set_value",
+                entity_id="input_text.energybrain_stats_financial",
+                value=financial_text,
+            )
+            self._log.info(
+                "statistics_written",
+                pv_kwh=round(pv_today, 2),
+                self_use_kwh=round(self_use_kwh, 2),
+                total_eur=round(total_benefit_eur, 2),
+            )
+        except Exception as exc:
+            self._log.warning("statistics_job_failed", error=str(exc))
 
     async def _execute_action(self, action, state: SystemState) -> None:
         """Execute a validated action (used for rollbacks)."""

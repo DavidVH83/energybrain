@@ -192,6 +192,87 @@ input_text:
     max: 255
     initial: ""
 
+  # Live energiestroom (PV → batterij / huis / net)
+  energybrain_live_flow:
+    name: "Live energiestroom"
+    icon: mdi:lightning-bolt-circle
+    max: 255
+    initial: ""
+
+  # Capaciteitstarief tracking
+  energybrain_capacity_current:
+    name: "Kwartiergemiddelde net nu"
+    icon: mdi:gauge
+    max: 255
+    initial: ""
+
+  energybrain_capacity_peak:
+    name: "Maandpiek capaciteitstarief"
+    icon: mdi:chart-bar
+    max: 255
+    initial: ""
+
+  # Dagstatistieken (geschreven door EnergyBrain om 22:00)
+  energybrain_stats_today:
+    name: "Statistieken vandaag"
+    icon: mdi:chart-line
+    max: 255
+    initial: ""
+
+  energybrain_stats_financial:
+    name: "Financieel overzicht vandaag"
+    icon: mdi:currency-eur
+    max: 255
+    initial: ""
+
+
+# ===========================================================================
+# UTILITY METERS — week/maand/jaar statistieken voor net import/export
+# Bron: cumulatieve P1-sensoren (niet dagelijks reset, ideaal voor utility_meter)
+# Let op: meters starten te tellen vanaf het moment van aanmaken in HA.
+# ===========================================================================
+
+utility_meter:
+  energybrain_import_dagelijks:
+    source: sensor.p1_meter_energie_import
+    cycle: daily
+    name: "Netimport dagelijks"
+
+  energybrain_import_wekelijks:
+    source: sensor.p1_meter_energie_import
+    cycle: weekly
+    name: "Netimport wekelijks"
+
+  energybrain_import_maandelijks:
+    source: sensor.p1_meter_energie_import
+    cycle: monthly
+    name: "Netimport maandelijks"
+
+  energybrain_import_jaarlijks:
+    source: sensor.p1_meter_energie_import
+    cycle: yearly
+    name: "Netimport jaarlijks"
+
+  energybrain_export_dagelijks:
+    source: sensor.p1_meter_energie_export
+    cycle: daily
+    name: "Netexport dagelijks"
+
+  energybrain_export_wekelijks:
+    source: sensor.p1_meter_energie_export
+    cycle: weekly
+    name: "Netexport wekelijks"
+
+  energybrain_export_maandelijks:
+    source: sensor.p1_meter_energie_export
+    cycle: monthly
+    name: "Netexport maandelijks"
+
+  energybrain_export_jaarlijks:
+    source: sensor.p1_meter_energie_export
+    cycle: yearly
+    name: "Netexport jaarlijks"
+
 
 # ===========================================================================
 # TIMERS — beheren override/boost verloop zonder Python code

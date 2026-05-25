@@ -14,9 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install EnergyBrain — commit hash in RUN-regel zodat Docker cache altijd bust
-# f3fbb23 = feat: v0.3.7 scheduling fix, simultaneous starts, temperature control
+# dfd1855 = feat: v0.3.8 live energiestroom, capaciteitstarief, statistieken tab
 RUN pip install --no-cache-dir \
-    "git+https://github.com/DavidVH83/energybrain.git@f3fbb234d5b4175de59f72857d18ca65d2eeb947#egg=energybrain"
+    "git+https://github.com/DavidVH83/energybrain.git@dfd1855edc4a15e5e283c62c80a0deb7e1a55b7b#egg=energybrain"
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
